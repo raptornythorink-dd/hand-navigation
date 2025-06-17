@@ -74,7 +74,7 @@ def main():
     prev_gesture_times = {gesture: time.time() for gesture in gesture_names}
     gesture_cooldowns = {gesture: (2 if gesture == "Dog" else 1.5 if gesture in click_gestures or gesture in keyboard_gestures else 0.1) for gesture in gesture_names}
 
-    last_gestures = deque(maxlen=max_len_queue)  # Store last 5 images for FPS calculation
+    last_gestures = deque(maxlen=max_len_queue)  # Store last images for FPS calculation
 
     prev_fps=0
     while cap.isOpened():
