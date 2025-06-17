@@ -24,9 +24,10 @@ input_details = interpreter.get_input_details()
 output_details = interpreter.get_output_details()
 
 # Gesture mapping
-gesture_names = ["Fist", "Down", "Down-Left", "Left", "Up-Left", "Up", "Up-Right", "Right", "Down-Right", "Two Left", "Two Right", "Two Up", "Two Down", "Palm", "Hold", "Hand Left", "Hand Right", "Dog", "Reverse C", "OK", "Metal"]
+gesture_names = ["Fist", "Down", "Down-Left", "Left", "Up-Left", "Up", "Up-Right", "Right", "Down-Right", "Two Left", "Two Right", "Two Up", "Two Down", "Palm", "Hold", "Hand Left", "Hand Right", "Dog", "Reverse C", "OK", "Metal", "Line", "L", "Spock"]
 click_gestures = {"Two Left", "Two Right"}
-keyboard_gestures = {"Metal", "OK", "Reverse C", "Dog", "Hand Left", "Hand Right"}
+keyboard_gestures = {"Metal", "OK", "Reverse C", "Hand Left", "Hand Right", "Spock"}
+special_gestures = {"Dog", "Line"}
 width = 640
 height = 360
 
@@ -72,7 +73,7 @@ def main():
 
     prev_time = time.time()
     prev_gesture_times = {gesture: time.time() for gesture in gesture_names}
-    gesture_cooldowns = {gesture: (2 if gesture == "Dog" else 1.5 if gesture in click_gestures or gesture in keyboard_gestures else 0.1) for gesture in gesture_names}
+    gesture_cooldowns = {gesture: (2 if gesture in special_gestures else 1.5 if gesture in click_gestures or gesture in keyboard_gestures else 0.1) for gesture in gesture_names}
 
     last_gestures = deque(maxlen=max_len_queue)  # Store last images for FPS calculation
 
@@ -82,7 +83,7 @@ def main():
         if not ret:
             break
         frame = cv2.resize(frame, (width, height))
-        #frame = cv2.flip(frame, 1)
+
         # Convert the frame to RGB as MediaPipe expects RGB images
         rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
 
@@ -172,6 +173,14 @@ def main():
 
                 if gesture_name == "Dog":
                     enabled = not enabled
+                    clockwise = 1 if enabled else -1
+                    mouse.move(screen_width * 0.1 * clockwise, screen_height * 0.1 * clockwise, False, 0.1)
+                    mouse.move(0, - screen_height * 0.2 * clockwise, False, 0.05)
+                    mouse.move(- screen_width * 0.1 * clockwise, screen_height * 0.1 * clockwise, False, 0.1)
+                    mouse.move(- screen_width * 0.1 * clockwise, - screen_height * 0.1 * clockwise, False, 0.1)
+                    mouse.move(0, screen_height * 0.2 * clockwise, False, 0.05)
+                    mouse.move(screen_width * 0.1 * clockwise, - screen_height * 0.1 * clockwise, False, 0.1)
+
 
         fps, prev_time = calculate_fps(prev_time, prev_fps)  # Calculate and display FPS
         prev_fps = fps

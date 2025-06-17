@@ -2,3 +2,4 @@ macmouse
 mediapipe
 opencv-python
 pyautogui
+tensorflow
