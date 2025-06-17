@@ -135,10 +135,20 @@ def main():
                 move_speed = 0.01
                 if gesture_name in ["Left", "Right", "Up", "Down", "Down-Left", "Down-Right", "Up-Left", "Up-Right"]:
                     lm = hand_landmarks.landmark
+
                     x_base, y_base = lm[5].x, lm[5].y
                     x_tip, y_tip = lm[8].x, lm[8].y
+
+                    brect = calc_bounding_rect(frame, hand_landmarks)
+                    hand_w = (brect[2] - brect[0]) / frame.shape[1]
+                    hand_h = (brect[3] - brect[1]) / frame.shape[0]
+                    hand_diag = np.sqrt(hand_w**2 + hand_h**2)
+
                     dist = np.sqrt((x_tip - x_base)**2 + (y_tip - y_base)**2)
-                    move_speed = 0.1 * dist
+                    norm_dist = dist / hand_diag
+                    print(dist, norm_dist)
+                    
+                    move_speed = 0.05 * norm_dist
 
                 if enabled and check_same_gestures(last_gestures):
                     match gesture_name:
