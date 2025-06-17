@@ -26,7 +26,7 @@ output_details = interpreter.get_output_details()
 # Gesture mapping
 gesture_names = ["Fist", "Down", "Down-Left", "Left", "Up-Left", "Up", "Up-Right", "Right", "Down-Right", "Two Left", "Two Right", "Two Up", "Two Down", "Palm", "Hold", "Hand Left", "Hand Right", "Dog", "Reverse C", "OK", "Metal", "Line", "L", "Spock"]
 click_gestures = {"Two Left", "Two Right"}
-keyboard_gestures = {"Metal", "OK", "Reverse C", "Hand Left", "Hand Right", "Spock"}
+keyboard_gestures = {"Metal", "OK", "Reverse C", "Hand Left", "Hand Right", "Spock", "Palm", "Hold", "L"}
 special_gestures = {"Dog", "Line"}
 width = 640
 height = 360
@@ -34,8 +34,8 @@ height = 360
 # Screen size for mouse control
 screen_width, screen_height = pyautogui.size()
 
-# Queue to store last images for FPS calculation
-max_len_queue = 10
+# Queue to store last images
+max_len_queue = 5
 
 # Function to normalize landmarks
 def normalize_landmarks(landmarks):
@@ -44,11 +44,6 @@ def normalize_landmarks(landmarks):
     normalized = np.array([[lm.x - base_x, lm.y - base_y] for lm in landmarks])
     return normalized.flatten()
 
-# function calculate FPS
-def calculate_fps(prev_time, prev_fps):
-    current_time = time.time()
-    fps = 0.9*prev_fps+ 0.1*(1 / (current_time - prev_time))
-    return fps, current_time
 
 #function find the bounding box
 def calc_bounding_rect(image, landmarks):
@@ -71,13 +66,11 @@ def main():
     cap = cv2.VideoCapture(0)
     enabled = False
 
-    prev_time = time.time()
-    prev_gesture_times = {gesture: time.time() for gesture in gesture_names}
+    prev_gesture_times = {gesture: time.time() - 2 for gesture in gesture_names}
     gesture_cooldowns = {gesture: (2 if gesture in special_gestures else 1.5 if gesture in click_gestures or gesture in keyboard_gestures else 0.1) for gesture in gesture_names}
 
     last_gestures = deque(maxlen=max_len_queue)  # Store last images for FPS calculation
 
-    prev_fps=0
     while cap.isOpened():
         ret, frame = cap.read()
         if not ret:
@@ -115,17 +108,6 @@ def main():
                 print('Predicted gesture:', gesture_name)
                 last_gestures.append(gesture_name)
 
-                # Draw the hand landmarks on the frame
-                mpDraw.draw_landmarks(frame, hand_landmarks, mp_hands.HAND_CONNECTIONS, handLmsStyle,
-                                    handConStyle)  # draw landmarks styles
-                brect = calc_bounding_rect(frame, hand_landmarks)  # Calculate the bounding rectangle
-                cv2.rectangle(frame, (brect[0], brect[1]), (brect[2], brect[3]), (0, 255, 0),
-                            1)  # Draw the bounding rectangle
-
-                # Display the predicted gesture on the frame
-                cv2.putText(frame, f'Gesture: {gesture_name}', (180, 30), cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 0, 0), 2,
-                            cv2.LINE_AA)
-
                 curr_time = time.time()
                 if prev_gesture_times[gesture_name] + gesture_cooldowns[gesture_name] > curr_time:
                     continue
@@ -146,7 +128,6 @@ def main():
 
                     dist = np.sqrt((x_tip - x_base)**2 + (y_tip - y_base)**2)
                     norm_dist = dist / hand_diag
-                    print(dist, norm_dist)
                     
                     move_speed = 0.05 * norm_dist
 
@@ -186,8 +167,14 @@ def main():
                             keyboard.send('left')
                         case "Right Hand":
                             keyboard.send('right')
-                        case _:
-                            pass
+                        case "L":
+                            keyboard.send(['cmd', 40])
+                        case "Palm":
+                            keyboard.send(['cmd', 24])
+                        case "Hold":
+                            keyboard.send(['cmd', 27])
+                        case "Spock":
+                            keyboard.send([58, 176])
 
                 if gesture_name == "Dog":
                     enabled = not enabled
@@ -198,15 +185,26 @@ def main():
                     mouse.move(- screen_width * 0.1 * clockwise, - screen_height * 0.1 * clockwise, False, 0.1)
                     mouse.move(0, screen_height * 0.2 * clockwise, False, 0.05)
                     mouse.move(screen_width * 0.1 * clockwise, - screen_height * 0.1 * clockwise, False, 0.1)
-
-
-        fps, prev_time = calculate_fps(prev_time, prev_fps)  # Calculate and display FPS
-        prev_fps = fps
-        cv2.putText(frame, f'FPS: {int(fps)}', (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 0, 0), 2, cv2.LINE_AA)
-        # Display the frame
-        cv2.imshow('Hand Gesture Recognition', frame)
-
-        if cv2.waitKey(1) & 0xFF == 27:
+                elif gesture_name == "Line":
+                    break
+            else:
+                continue
+            mouse.move(0, screen_height * 0.2 * clockwise, False, 0.1)
+            mouse.move(0, -screen_height * 0.2 * clockwise, False, 0.1)
+            mouse.move(screen_width * 0.1, screen_height * 0.1 * clockwise, False, 0.05)
+            mouse.move(-screen_width * 0.1, -screen_height * 0.1 * clockwise, False, 0.05)
+            mouse.move(screen_width * 0.2, 0, False, 0.1)
+            mouse.move(-screen_width * 0.2, 0, False, 0.1)
+            mouse.move(screen_width * 0.1, -screen_height * 0.1 * clockwise, False, 0.05)
+            mouse.move(-screen_width * 0.1, screen_height * 0.1 * clockwise, False, 0.05)
+            mouse.move(0, -screen_height * 0.2 * clockwise, False, 0.1)
+            mouse.move(0, screen_height * 0.2 * clockwise, False, 0.1)
+            mouse.move(-screen_width * 0.1, -screen_height * 0.1 * clockwise, False, 0.05)
+            mouse.move(screen_width * 0.1, screen_height * 0.1 * clockwise, False, 0.05)
+            mouse.move(-screen_width * 0.2, 0, False, 0.1)
+            mouse.move(screen_width * 0.2, 0, False, 0.1)
+            mouse.move(-screen_width * 0.1, screen_height * 0.1 * clockwise, False, 0.05)
+            mouse.move(screen_width * 0.1, -screen_height * 0.1 * clockwise, False, 0.05)
             break
 
     # Release the capture and close any open windows
