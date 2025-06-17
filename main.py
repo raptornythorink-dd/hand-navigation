@@ -146,7 +146,6 @@ def main():
 
                     dist = np.sqrt((x_tip - x_base)**2 + (y_tip - y_base)**2)
                     norm_dist = dist / hand_diag
-                    print(dist, norm_dist)
                     
                     move_speed = 0.05 * norm_dist
 
