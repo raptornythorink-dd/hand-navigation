@@ -6,6 +6,7 @@ import time
 import pyautogui
 import keyboard
 import macmouse as mouse
+from collections import deque
 
 # Initialize MediaPipe Hands
 mp_hands = mp.solutions.hands
@@ -32,6 +33,9 @@ height = 360
 # Screen size for mouse control
 screen_width, screen_height = pyautogui.size()
 
+# Queue to store last images for FPS calculation
+max_len_queue = 10
+
 # Function to normalize landmarks
 def normalize_landmarks(landmarks):
     # Take the first landmark as the reference point (0, 0)
@@ -57,6 +61,10 @@ def calc_bounding_rect(image, landmarks):
     x, y, w, h = cv2.boundingRect(landmark_array)
     return [x, y, x + w, y + h]
 
+#function check if all last gestures are the same
+def check_same_gestures(last_gestures):
+    return all(gesture == last_gestures[0] for gesture in last_gestures)
+
 def main():
     # Start capturing video from the camera
     cap = cv2.VideoCapture(0)
@@ -65,6 +73,8 @@ def main():
     prev_time = time.time()
     prev_gesture_times = {gesture: time.time() for gesture in gesture_names}
     gesture_cooldowns = {gesture: (2 if gesture == "Dog" else 1.5 if gesture in click_gestures or gesture in keyboard_gestures else 0.1) for gesture in gesture_names}
+
+    last_gestures = deque(maxlen=max_len_queue)  # Store last 5 images for FPS calculation
 
     prev_fps=0
     while cap.isOpened():
@@ -102,6 +112,7 @@ def main():
                     continue
                 gesture_name = gesture_names[predicted_class]
                 print('Predicted gesture:', gesture_name)
+                last_gestures.append(gesture_name)
 
                 # Draw the hand landmarks on the frame
                 mpDraw.draw_landmarks(frame, hand_landmarks, mp_hands.HAND_CONNECTIONS, handLmsStyle,
@@ -120,7 +131,7 @@ def main():
 
                 prev_gesture_times[gesture_name] = curr_time
 
-                if enabled:
+                if enabled and check_same_gestures(last_gestures):
                     match gesture_name:
                         case "Left":
                             mouse.move(-0.01*screen_width, 0, False)  # Move mouse left
