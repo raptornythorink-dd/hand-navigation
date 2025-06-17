@@ -1,169 +1,179 @@
-import macmouse as mouse
-import mediapipe as mp
 import cv2
 import numpy as np
-import pyautogui
+import mediapipe as mp
+import tensorflow as tf
 import time
+import pyautogui
+import keyboard
+import macmouse as mouse
 
-mp_drawing = mp.solutions.drawing_utils
-mp_drawing_styles = mp.solutions.drawing_styles
+# Initialize MediaPipe Hands
 mp_hands = mp.solutions.hands
+hands = mp_hands.Hands(static_image_mode=False, max_num_hands=1, min_detection_confidence=0.5)
+mpDraw = mp.solutions.drawing_utils #use drawing utility
+handLmsStyle = mpDraw.DrawingSpec(color=(0, 255, 255), thickness=1) #define landmark style
+handConStyle = mpDraw.DrawingSpec(color=(255, 255, 0), thickness=1) #define connection style
 
-HEIGHT, WIDTH = pyautogui.size()
+# Load the TFLite model and allocate tensors
+interpreter = tf.lite.Interpreter(model_path='hand_gesture_model.tflite')
+interpreter.allocate_tensors()
 
-def angle_between(a, b, c):
-    ab = b - a
-    cb = b - c
-    ab = ab / np.linalg.norm(ab)
-    cb = cb / np.linalg.norm(cb)
-    dot = np.dot(ab, cb)
-    return np.arccos(np.clip(dot, -1.0, 1.0))
+# Get input and output details
+input_details = interpreter.get_input_details()
+output_details = interpreter.get_output_details()
 
+# Gesture mapping
+gesture_names = ["Fist", "Down", "Down-Left", "Left", "Up-Left", "Up", "Up-Right", "Right", "Down-Right", "Two Left", "Two Right", "Two Up", "Two Down", "Palm", "Hold", "Hand Left", "Hand Right", "Dog", "Reverse C", "OK", "Metal"]
+click_gestures = {"Two Left", "Two Right"}
+keyboard_gestures = {"Metal", "OK", "Reverse C", "Dog", "Hand Left", "Hand Right"}
+width = 640
+height = 360
 
-def is_finger_straight(hand_landmarks, min_index, w, h, proportion_threshold=0.5, angle_threshold=2.7):
-    """
-    Checks if the finger (starting at min_index) is pointed enough:
-    - The distance between base and tip is a significant proportion of the hand size in that direction.
-    - The finger is straight enough (angle check).
-    """
-    # Get base and tip coordinates
-    base = hand_landmarks.landmark[min_index]
-    tip = hand_landmarks.landmark[min_index + 3]
-    base_xy = np.array([base.x * w, base.y * h])
-    tip_xy = np.array([tip.x * w, tip.y * h])
-    delta = tip_xy - base_xy
+# Screen size for mouse control
+screen_width, screen_height = pyautogui.size()
 
-    # Get hand bounding box size
-    all_points = np.array([[lm.x * w, lm.y * h] for lm in hand_landmarks.landmark])
-    bbox_min = np.min(all_points, axis=0)
-    bbox_max = np.max(all_points, axis=0)
-    hand_size = bbox_max - bbox_min
+# Function to normalize landmarks
+def normalize_landmarks(landmarks):
+    # Take the first landmark as the reference point (0, 0)
+    base_x, base_y = landmarks[0].x, landmarks[0].y
+    normalized = np.array([[lm.x - base_x, lm.y - base_y] for lm in landmarks])
+    return normalized.flatten()
 
-    # Proportion check
-    proportion_x = abs(delta[0]) / (hand_size[0] + 1e-6)
-    proportion_y = abs(delta[1]) / (hand_size[1] + 1e-6)
-    proportion_ok = proportion_x > proportion_threshold or proportion_y > proportion_threshold
+# function calculate FPS
+def calculate_fps(prev_time, prev_fps):
+    current_time = time.time()
+    fps = 0.9*prev_fps+ 0.1*(1 / (current_time - prev_time))
+    return fps, current_time
 
-    # Angle check (as before)
-    index_positions = list(map(lambda l: np.array((l.x * w, l.y * h)), hand_landmarks.landmark[min_index:min_index + 4]))
-    angle_ok = angle_between(*index_positions[:-1]) > angle_threshold and angle_between(*index_positions[1:]) > 0.5
-
-    return proportion_ok and angle_ok
-
+#function find the bounding box
+def calc_bounding_rect(image, landmarks):
+    image_width, image_height = image.shape[1], image.shape[0]
+    landmark_array = np.empty((0, 2), int)
+    for _, landmark in enumerate(landmarks.landmark):
+        landmark_x = min(int(landmark.x * image_width), image_width - 1)
+        landmark_y = min(int(landmark.y * image_height), image_height - 1)
+        landmark_point = [np.array((landmark_x, landmark_y))]
+        landmark_array = np.append(landmark_array, landmark_point, axis=0)
+    x, y, w, h = cv2.boundingRect(landmark_array)
+    return [x, y, x + w, y + h]
 
 def main():
+    # Start capturing video from the camera
     cap = cv2.VideoCapture(0)
-    last_left_click = time.time()
-    last_right_click = time.time()
-    cooldown = 1
-    hands = mp.solutions.hands.Hands(
-        static_image_mode=False,
-        max_num_hands=2,
-        min_detection_confidence=0.7,
-        min_tracking_confidence=0.5
-    )
-    with mp_hands.Hands(
-    model_complexity=0,
-    min_detection_confidence=0.5,
-    min_tracking_confidence=0.5) as hands:
-        while cap.isOpened():
-            success, image = cap.read()
-            if not success:
-                print("Ignoring empty camera frame.")
-                # If loading a video, use 'break' instead of 'continue'.
-                continue
+    enabled = False
 
-            # To improve performance, optionally mark the image as not writeable to
-            # pass by reference.
-            image.flags.writeable = False
-            image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
-            results = hands.process(image)
+    prev_time = time.time()
+    prev_gesture_times = {gesture: time.time() for gesture in gesture_names}
+    gesture_cooldowns = {gesture: (2 if gesture == "Dog" else 1.5 if gesture in click_gestures or gesture in keyboard_gestures else 0.1) for gesture in gesture_names}
 
-            # Draw the hand annotations on the image.
-            image.flags.writeable = True
-            image = cv2.cvtColor(image, cv2.COLOR_RGB2BGR)
-            if results.multi_hand_landmarks and results.multi_handedness:
-                for hand_landmarks, handedness in zip(results.multi_hand_landmarks, results.multi_handedness):
-                    label = handedness.classification[0].label  # 'Left' or 'Right'
-                    if label == 'Left': # Actually right hand (because of flipping?)
-                        color = (0, 0, 255)  # Red for right hand
-                        mp_drawing.draw_landmarks(
-                            image,
-                            hand_landmarks,
-                            mp_hands.HAND_CONNECTIONS,
-                            mp_drawing.DrawingSpec(color=color, thickness=2, circle_radius=4),
-                            mp_drawing.DrawingSpec(color=color, thickness=2))
-                        h, w, _ = image.shape
-                        if is_finger_straight(hand_landmarks, 1, w, h, 0.5): # thumb
-                            base, tip = hand_landmarks.landmark[1], hand_landmarks.landmark[4]
-                            base_xy = np.array([base.x * w, base.y * h])
-                            tip_xy = np.array([tip.x * w, tip.y * h])
-                            direction = tip_xy - base_xy
-                            norm = np.linalg.norm(direction)
-                            if norm > 0:
-                                if abs(direction[1]) > 0.7:
-                                    if direction[1] > 0.7:
-                                        if time.time() - last_right_click > cooldown:
-                                            last_right_click = time.time()
-                                            mouse.right_click()
-                                            print("Right click")
-                                    elif direction[1] < -0.7:
-                                        if time.time() - last_left_click > cooldown:
-                                            last_left_click = time.time()
-                                            mouse.click()
-                                            print("Left click")
-                        if is_finger_straight(hand_landmarks, 5, w, h): 
-                            base = hand_landmarks.landmark[5]
-                            tip = hand_landmarks.landmark[8]
-                            base_xy = np.array([base.x * w, base.y * h])
-                            tip_xy = np.array([tip.x * w, tip.y * h])
-                            direction = tip_xy - base_xy
-                            norm = np.linalg.norm(direction)
-                            if norm > 0:
-                                direction = direction / norm
-                                if abs(direction[1]) > 0.7:
-                                    if direction[1] > 0.7:
-                                        mouse.wheel(1)  # Up
-                                    elif direction[1] < -0.7:
-                                        mouse.wheel(-1)   # Down
+    prev_fps=0
+    while cap.isOpened():
+        ret, frame = cap.read()
+        if not ret:
+            break
+        frame = cv2.resize(frame, (width, height))
+        #frame = cv2.flip(frame, 1)
+        # Convert the frame to RGB as MediaPipe expects RGB images
+        rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
 
-                    else: # Left hand
-                        color = (0, 255, 0)  # Green for left hand
-                        mp_drawing.draw_landmarks(
-                            image,
-                            hand_landmarks,
-                            mp_hands.HAND_CONNECTIONS,
-                            mp_drawing.DrawingSpec(color=color, thickness=2, circle_radius=4),
-                            mp_drawing.DrawingSpec(color=color, thickness=2))
-                        h, w, _ = image.shape
-                        if is_finger_straight(hand_landmarks, 5, w, h, 0.2): # index
-                            base, tip = hand_landmarks.landmark[5], hand_landmarks.landmark[8]
-                            base_xy = np.array([base.x * w, base.y * h])
-                            tip_xy = np.array([tip.x * w, tip.y * h])
-                            direction = tip_xy - base_xy
-                            norm = np.linalg.norm(direction)
-                            if norm > 0:
-                                direction = direction / norm
-                                if abs(direction[0]) > 0.7:
-                                    if direction[0] > 0.7:
-                                        mouse.move(-WIDTH * 0.01, 0, False)
-                                    elif direction[0] < -0.7:
-                                        mouse.move(WIDTH * 0.01, 0, False)
-                                elif abs(direction[1]) > 0.7:
-                                    if direction[1] > 0.7:
-                                        mouse.move(0, HEIGHT * 0.01, False)
-                                    elif direction[1] < -0.7:
-                                        mouse.move(0, -HEIGHT * 0.01, False)
+        # Process the frame to find hands
+        result = hands.process(rgb_frame)
 
-            # Flip the image horizontally for a selfie-view display.
-            cv2.imshow('MediaPipe Hands', cv2.flip(image, 1))
+        if result.multi_hand_landmarks:
+            for hand_landmarks in result.multi_hand_landmarks:
+                # Normalize the landmarks
+                normalized_landmarks = normalize_landmarks(hand_landmarks.landmark)
 
+                # Reshape and prepare input data
+                input_data = np.array(normalized_landmarks, dtype=np.float32).reshape(input_details[0]['shape'])
 
+                # Set the input tensor
+                interpreter.set_tensor(input_details[0]['index'], input_data)
 
-            if cv2.waitKey(1) & 0xFF == 27:
-                break
+                # Run inference
+                interpreter.invoke()
+
+                # Get the output tensor
+                output_data = interpreter.get_tensor(output_details[0]['index'])
+
+                # Interpret the results
+                predicted_class = np.argmax(output_data)
+                if output_data[0][predicted_class] < 0.9:
+                    continue
+                gesture_name = gesture_names[predicted_class]
+                print('Predicted gesture:', gesture_name)
+
+                # Draw the hand landmarks on the frame
+                mpDraw.draw_landmarks(frame, hand_landmarks, mp_hands.HAND_CONNECTIONS, handLmsStyle,
+                                    handConStyle)  # draw landmarks styles
+                brect = calc_bounding_rect(frame, hand_landmarks)  # Calculate the bounding rectangle
+                cv2.rectangle(frame, (brect[0], brect[1]), (brect[2], brect[3]), (0, 255, 0),
+                            1)  # Draw the bounding rectangle
+
+                # Display the predicted gesture on the frame
+                cv2.putText(frame, f'Gesture: {gesture_name}', (180, 30), cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 0, 0), 2,
+                            cv2.LINE_AA)
+
+                curr_time = time.time()
+                if prev_gesture_times[gesture_name] + gesture_cooldowns[gesture_name] > curr_time:
+                    continue
+
+                prev_gesture_times[gesture_name] = curr_time
+
+                if enabled:
+                    match gesture_name:
+                        case "Left":
+                            mouse.move(-0.01*screen_width, 0, False)  # Move mouse left
+                        case "Right":
+                            mouse.move(0.01*screen_width, 0, False)  # Move mouse right
+                        case "Up":
+                            mouse.move(0, -0.01*screen_height, False)  # Move mouse up
+                        case "Down":
+                            mouse.move(0, 0.01*screen_height, False)  # Move mouse down
+                        case "Down-Left":
+                            mouse.move(-0.01*screen_width, 0.01*screen_height, False)
+                        case "Down-Right":
+                            mouse.move(0.01*screen_width, 0.01*screen_height, False)
+                        case "Up-Left":
+                            mouse.move(-0.01*screen_width, -0.01*screen_height, False)
+                        case "Up-Right":
+                            mouse.move(0.01*screen_width, -0.01*screen_height, False)
+                        case "Two Up":
+                            mouse.wheel(-1)
+                        case "Two Down":
+                            mouse.wheel(1)
+                        case "Two Left":
+                            mouse.click()
+                        case "Two Right":
+                            mouse.right_click()
+                        case "OK":
+                            keyboard.send('enter')
+                        case "Reverse C":
+                            keyboard.send('escape')
+                        case "Metal":
+                            keyboard.send(['cmd', 75])
+                        case "Left Hand":
+                            keyboard.send('left')
+                        case "Right Hand":
+                            keyboard.send('right')
+                        case _:
+                            pass
+
+                if gesture_name == "Dog":
+                    enabled = not enabled
+
+        fps, prev_time = calculate_fps(prev_time, prev_fps)  # Calculate and display FPS
+        prev_fps = fps
+        cv2.putText(frame, f'FPS: {int(fps)}', (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 0, 0), 2, cv2.LINE_AA)
+        # Display the frame
+        cv2.imshow('Hand Gesture Recognition', frame)
+
+        if cv2.waitKey(1) & 0xFF == 27:
+            break
+
+    # Release the capture and close any open windows
     cap.release()
-
+    cv2.destroyAllWindows()
 
 if __name__ == "__main__":
     main()
