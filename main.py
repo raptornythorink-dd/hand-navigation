@@ -132,24 +132,32 @@ def main():
 
                 prev_gesture_times[gesture_name] = curr_time
 
+                move_speed = 0.01
+                if gesture_name in ["Left", "Right", "Up", "Down", "Down-Left", "Down-Right", "Up-Left", "Up-Right"]:
+                    lm = hand_landmarks.landmark
+                    x_base, y_base = lm[5].x, lm[5].y
+                    x_tip, y_tip = lm[8].x, lm[8].y
+                    dist = np.sqrt((x_tip - x_base)**2 + (y_tip - y_base)**2)
+                    move_speed = 0.1 * dist
+
                 if enabled and check_same_gestures(last_gestures):
                     match gesture_name:
                         case "Left":
-                            mouse.move(-0.01*screen_width, 0, False)  # Move mouse left
+                            mouse.move(-move_speed*screen_width, 0, False)  # Move mouse left
                         case "Right":
-                            mouse.move(0.01*screen_width, 0, False)  # Move mouse right
+                            mouse.move(move_speed*screen_width, 0, False)  # Move mouse right
                         case "Up":
-                            mouse.move(0, -0.01*screen_height, False)  # Move mouse up
+                            mouse.move(0, -move_speed*screen_height, False)  # Move mouse up
                         case "Down":
-                            mouse.move(0, 0.01*screen_height, False)  # Move mouse down
+                            mouse.move(0, move_speed*screen_height, False)  # Move mouse down
                         case "Down-Left":
-                            mouse.move(-0.01*screen_width, 0.01*screen_height, False)
+                            mouse.move(-move_speed*screen_width, move_speed*screen_height, False)
                         case "Down-Right":
-                            mouse.move(0.01*screen_width, 0.01*screen_height, False)
+                            mouse.move(move_speed*screen_width, move_speed*screen_height, False)
                         case "Up-Left":
-                            mouse.move(-0.01*screen_width, -0.01*screen_height, False)
+                            mouse.move(-move_speed*screen_width, -move_speed*screen_height, False)
                         case "Up-Right":
-                            mouse.move(0.01*screen_width, -0.01*screen_height, False)
+                            mouse.move(move_speed*screen_width, -move_speed*screen_height, False)
                         case "Two Up":
                             mouse.wheel(-1)
                         case "Two Down":
