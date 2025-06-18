@@ -164,9 +164,9 @@ def main():
                         case "Metal":
                             keyboard.send(['cmd', 75])
                         case "Left Hand":
-                            keyboard.send('left')
+                            keyboard.send(123)
                         case "Right Hand":
-                            keyboard.send('right')
+                            keyboard.send(124)
                         case "L":
                             keyboard.send(['cmd', 40])
                         case "Palm":
@@ -174,9 +174,11 @@ def main():
                         case "Hold":
                             keyboard.send(['cmd', 27])
                         case "Spock":
-                            keyboard.send([58, 176])
+                            keyboard.send(['cmd', 39]) # Need to remap the default accessibilty shortcut and to disable everything except the accesibility keyboard
+                        case "Line":
+                            break
 
-                if gesture_name == "Dog":
+                if gesture_name == "Dog" and check_same_gestures(last_gestures):
                     enabled = not enabled
                     clockwise = 1 if enabled else -1
                     mouse.move(screen_width * 0.1 * clockwise, screen_height * 0.1 * clockwise, False, 0.1)
@@ -185,8 +187,6 @@ def main():
                     mouse.move(- screen_width * 0.1 * clockwise, - screen_height * 0.1 * clockwise, False, 0.1)
                     mouse.move(0, screen_height * 0.2 * clockwise, False, 0.05)
                     mouse.move(screen_width * 0.1 * clockwise, - screen_height * 0.1 * clockwise, False, 0.1)
-                elif gesture_name == "Line":
-                    break
             else:
                 continue
             mouse.move(0, screen_height * 0.2 * clockwise, False, 0.1)
