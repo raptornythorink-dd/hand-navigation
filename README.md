@@ -9,6 +9,6 @@ Supported gestures:
 - ok: enter
 - reverse C: escape
 - L: cmd + K
-- L: Bits AI
+- metal: Bits AI
 - Spock: visual keyboard (requires to remap the default accessibilty shortcut and to disable everything except the accesibility keyboard)
 - line: shut down the app
